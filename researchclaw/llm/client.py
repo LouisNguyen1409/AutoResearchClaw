@@ -239,20 +239,32 @@ class LLMClient:
     ) -> LLMResponse:
         """Make a single API call."""
         is_reasoning = any(model.startswith(prefix) for prefix in _NEW_PARAM_MODELS)
+        use_responses_api = is_reasoning and bool(self.config.reasoning_effort)
+
+        if use_responses_api:
+            return self._raw_call_responses(model, messages, max_tokens, json_mode)
+
+        return self._raw_call_chat(model, messages, max_tokens, temperature, json_mode)
+
+    def _raw_call_chat(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        json_mode: bool,
+    ) -> LLMResponse:
+        """Chat Completions API call (/v1/chat/completions)."""
+        is_reasoning = any(model.startswith(prefix) for prefix in _NEW_PARAM_MODELS)
 
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
 
-        # Reasoning models (o3, gpt-5.x) don't accept temperature when
-        # reasoning.effort is set; they also need max_completion_tokens.
         if is_reasoning:
             reasoning_min = 32768
             body["max_completion_tokens"] = max(max_tokens, reasoning_min)
-            if self.config.reasoning_effort:
-                body["reasoning"] = {"effort": self.config.reasoning_effort}
-            # Only set temperature=1 (the only accepted value for reasoning models)
         else:
             body["temperature"] = temperature
             body["max_tokens"] = max_tokens
@@ -276,7 +288,6 @@ class LLMClient:
         with urllib.request.urlopen(req, timeout=self.config.timeout_sec) as resp:
             data = json.loads(resp.read())
 
-        # Handle API error responses (e.g., {"error": {"message": "..."}})
         if "error" in data:
             error_info = data["error"]
             error_msg = error_info.get("message", str(error_info))
@@ -285,14 +296,11 @@ class LLMClient:
                 url, 500, f"{error_type}: {error_msg}", {}, None  # noqa: PLW2901
             )
 
-        # Validate response structure
         if "choices" not in data or not data["choices"]:
             raise ValueError(f"Malformed API response: missing choices. Got: {data}")
 
         choice = data["choices"][0]
         usage = data.get("usage", {})
-
-        # Safely extract content (may be None for some responses)
         message = choice.get("message", {})
         content = message.get("content") or ""
 
@@ -304,6 +312,78 @@ class LLMClient:
             total_tokens=usage.get("total_tokens", 0),
             finish_reason=choice.get("finish_reason", ""),
             truncated=(choice.get("finish_reason", "") == "length"),
+            raw=data,
+        )
+
+    def _raw_call_responses(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        json_mode: bool,
+    ) -> LLMResponse:
+        """Responses API call (/v1/responses) for reasoning models."""
+        body: dict[str, Any] = {
+            "model": model,
+            "input": messages,
+            "reasoning": {"effort": self.config.reasoning_effort},
+        }
+
+        reasoning_min = 32768
+        body["max_output_tokens"] = max(max_tokens, reasoning_min)
+
+        if json_mode:
+            body["text"] = {"format": {"type": "json_object"}}
+
+        payload = json.dumps(body).encode("utf-8")
+        base = self.config.base_url.rstrip("/")
+        # Responses API is at /v1/responses, strip /v1 if present in base_url
+        if base.endswith("/v1"):
+            url = f"{base}/responses"
+        else:
+            url = f"{base}/v1/responses"
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self.config.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": self.config.user_agent,
+            },
+        )
+
+        with urllib.request.urlopen(req, timeout=self.config.timeout_sec) as resp:
+            data = json.loads(resp.read())
+
+        if "error" in data:
+            error_info = data["error"]
+            error_msg = error_info.get("message", str(error_info))
+            error_type = error_info.get("type", "api_error")
+            raise urllib.error.HTTPError(
+                url, 500, f"{error_type}: {error_msg}", {}, None  # noqa: PLW2901
+            )
+
+        # Extract text from Responses API output array
+        content = ""
+        output = data.get("output", [])
+        for item in output:
+            if item.get("type") == "message":
+                for block in item.get("content", []):
+                    if block.get("type") == "output_text":
+                        content += block.get("text", "")
+
+        usage = data.get("usage", {})
+        status = data.get("status", "")
+
+        return LLMResponse(
+            content=content,
+            model=data.get("model", model),
+            prompt_tokens=usage.get("input_tokens", 0),
+            completion_tokens=usage.get("output_tokens", 0),
+            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            finish_reason="stop" if status == "completed" else status,
+            truncated=(status == "incomplete"),
             raw=data,
         )
 
