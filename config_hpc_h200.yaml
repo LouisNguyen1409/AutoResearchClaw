@@ -44,7 +44,7 @@ llm:
   primary_model: "gpt-5.4"
   fallback_models:
     - "gpt-4o"
-  reasoning_effort: "high"
+  reasoning_effort: ""
 
 security:
   hitl_required_stages: []
