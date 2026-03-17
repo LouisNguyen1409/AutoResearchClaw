@@ -13,7 +13,7 @@ workspaces/
 .claude/settings.local.json
 
 # Experiment run artifacts (local only)
-artifacts/
+# artifacts/
 output/
 experiment_metaclaw/
 promotional/
