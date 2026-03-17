@@ -1,36 +1,23 @@
 #!/bin/bash
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
 python3 << 'PYEOF'
-import json
-import os
-import urllib.request
-import urllib.error
+from researchclaw.config import RCConfig
+from researchclaw.llm import create_llm_client
 
-api_key = os.environ.get("OPENAI_API_KEY", "")
-url = "https://api.openai.com/v1/responses"
+config = RCConfig.load('config_hpc_h200.yaml', check_paths=False)
+client = create_llm_client(config)
 
-body = {
-    "model": "gpt-5.4",
-    "input": [{"role": "user", "content": "What is 2+2? Reply with just the number."}],
-    "reasoning": {"effort": "high"},
-    "max_output_tokens": 256,
-}
-
-payload = json.dumps(body).encode("utf-8")
-req = urllib.request.Request(
-    url,
-    data=payload,
-    headers={
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    },
-)
+print(f"Model: {config.llm.primary_model}")
+print(f"Reasoning effort: {config.llm.reasoning_effort}")
 
 try:
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read())
-        print(json.dumps(data, indent=2)[:3000])
-except urllib.error.HTTPError as e:
-    error_body = e.read().decode()
-    print(f"HTTP {e.code}: {error_body[:500]}")
+    resp = client.chat(
+        [{"role": "user", "content": "What is 2+2? Reply with just the number."}],
+        max_tokens=64,
+    )
+    print(f"SUCCESS: model={resp.model}")
+    print(f"Content: {resp.content.strip()[:200]}")
+    print(f"Tokens: prompt={resp.prompt_tokens}, completion={resp.completion_tokens}")
+except Exception as e:
+    print(f"FAILED: {type(e).__name__}: {e}")
 PYEOF

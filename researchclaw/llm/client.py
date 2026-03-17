@@ -356,7 +356,7 @@ class LLMClient:
         with urllib.request.urlopen(req, timeout=self.config.timeout_sec) as resp:
             data = json.loads(resp.read())
 
-        if "error" in data:
+        if data.get("error"):
             error_info = data["error"]
             error_msg = error_info.get("message", str(error_info))
             error_type = error_info.get("type", "api_error")
