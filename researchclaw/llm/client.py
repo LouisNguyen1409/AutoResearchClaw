@@ -238,24 +238,23 @@ class LLMClient:
         json_mode: bool,
     ) -> LLMResponse:
         """Make a single API call."""
+        is_reasoning = any(model.startswith(prefix) for prefix in _NEW_PARAM_MODELS)
+
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
         }
 
-        # Use correct token parameter based on model
-        # Reasoning models (o3, gpt-5.x) need higher token budgets because
-        # internal reasoning tokens count against max_completion_tokens.
-        if any(model.startswith(prefix) for prefix in _NEW_PARAM_MODELS):
-            # Ensure reasoning models get at least 32768 tokens so internal
-            # reasoning doesn't consume the entire budget leaving empty output.
+        # Reasoning models (o3, gpt-5.x) don't accept temperature when
+        # reasoning.effort is set; they also need max_completion_tokens.
+        if is_reasoning:
             reasoning_min = 32768
             body["max_completion_tokens"] = max(max_tokens, reasoning_min)
-            # Add reasoning effort if configured
             if self.config.reasoning_effort:
                 body["reasoning"] = {"effort": self.config.reasoning_effort}
+            # Only set temperature=1 (the only accepted value for reasoning models)
         else:
+            body["temperature"] = temperature
             body["max_tokens"] = max_tokens
 
         if json_mode:
