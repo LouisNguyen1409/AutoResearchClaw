@@ -9,11 +9,11 @@ import urllib.error
 api_key = os.environ.get("OPENAI_API_KEY", "")
 url = "https://api.openai.com/v1/chat/completions"
 
+# Test 1: gpt-5.4 WITHOUT reasoning
 body = {
     "model": "gpt-5.4",
     "messages": [{"role": "user", "content": "Say hello"}],
     "max_completion_tokens": 64,
-    "reasoning": {"effort": "high"},
 }
 
 payload = json.dumps(body).encode("utf-8")
@@ -29,9 +29,8 @@ req = urllib.request.Request(
 try:
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())
-        print("SUCCESS:", data["choices"][0]["message"]["content"][:100])
-        print("MODEL:", data.get("model"))
+        print("gpt-5.4 (no reasoning): SUCCESS -", data.get("model"))
 except urllib.error.HTTPError as e:
     error_body = e.read().decode()
-    print(f"HTTP {e.code}: {error_body}")
+    print(f"gpt-5.4 (no reasoning): FAILED - HTTP {e.code}: {error_body[:200]}")
 PYEOF
