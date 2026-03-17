@@ -66,5 +66,6 @@ def create_llm_client(config: RCConfig) -> LLMClient | ACPClient:
             ),
             primary_model=config.llm.primary_model or "gpt-4o",
             fallback_models=list(config.llm.fallback_models or []),
+            reasoning_effort=config.llm.reasoning_effort or "",
         )
     )

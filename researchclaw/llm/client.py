@@ -71,6 +71,7 @@ class LLMConfig:
     retry_base_delay: float = 2.0
     timeout_sec: int = 300
     user_agent: str = _DEFAULT_USER_AGENT
+    reasoning_effort: str = ""  # "", "none", "low", "medium", "high", "xhigh"
 
 
 class LLMClient:
@@ -251,6 +252,9 @@ class LLMClient:
             # reasoning doesn't consume the entire budget leaving empty output.
             reasoning_min = 32768
             body["max_completion_tokens"] = max(max_tokens, reasoning_min)
+            # Add reasoning effort if configured
+            if self.config.reasoning_effort:
+                body["reasoning"] = {"effort": self.config.reasoning_effort}
         else:
             body["max_tokens"] = max_tokens
 
