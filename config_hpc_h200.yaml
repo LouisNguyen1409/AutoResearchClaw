@@ -43,7 +43,7 @@ llm:
     agent: "claude"
     cwd: "."
     session_name: "researchclaw"
-    timeout_sec: 600
+    timeout_sec: 1800
 
 security:
   hitl_required_stages: []
